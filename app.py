@@ -139,11 +139,12 @@ if uploaded_file is not None:
         stats = generate_statistics(df, selected_sheet)
         analyses[selected_sheet] = stats
         
-        # Affichage des statistiques
+        # Affichage des statistiques (PARTIE CORRIGÉE)
         col1, col2 = st.columns(2)
         with col1:
             st.write("**Métriques de base:**")
-            st.write(f"Nombre d'enregistrements: {stats[\"Nombre d'enregistrements\"]}")
+            nb_enregistrements = stats["Nombre d'enregistrements"]
+            st.write(f"Nombre d'enregistrements: {nb_enregistrements}")
             
             for col in df.columns:
                 if f"{col} - Valeurs uniques" in stats:
