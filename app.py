@@ -20,182 +20,113 @@ def load_data(uploaded_file):
         return sheets
     return None
 
-# Fonctions d'analyse
-def calculate_time_to_failure(df, installation_date_col, failure_date_col):
-    df[installation_date_col] = pd.to_datetime(df[installation_date_col])
-    df[failure_date_col] = pd.to_datetime(df[failure_date_col])
-    df['Time to Failure (jours)'] = (df[failure_date_col] - df[installation_date_col]).dt.days
-    return df
-
-def calculate_age_from_installation(df, installation_date_col, reference_date=None):
-    df[installation_date_col] = pd.to_datetime(df[installation_date_col])
-    if reference_date is None:
-        reference_date = datetime.now()
-    else:
-        reference_date = pd.to_datetime(reference_date)
-    df['Age depuis installation (jours)'] = (reference_date - df[installation_date_col]).dt.days
-    return df
-
-def generate_statistics(df, sheet_name):
-    stats = {}
-    stats["Nom de la feuille"] = sheet_name
-    stats["Nombre d'enregistrements"] = len(df)
+# Fonctions de calcul TTF et âge
+def calculate_metrics(df, date_col, event_date_col):
+    df[date_col] = pd.to_datetime(df[date_col])
+    df[event_date_col] = pd.to_datetime(df[event_date_col])
     
-    numeric_cols = df.select_dtypes(include=[np.number]).columns
-    for col in df.columns:
-        if col in numeric_cols:
-            stats[f"{col} - Moyenne"] = df[col].mean()
-            stats[f"{col} - Médiane"] = df[col].median()
-            stats[f"{col} - Écart-type"] = df[col].std()
-        else:
-            stats[f"{col} - Valeurs uniques"] = df[col].nunique()
-            stats[f"{col} - Top valeur"] = df[col].mode()[0] if not df[col].empty else None
+    # Calcul du Time To Failure (en jours)
+    df['TTF (jours)'] = (df[event_date_col] - df[date_col]).dt.days
+    
+    # Calcul de l'âge depuis installation (en jours)
+    df['Age (jours)'] = (pd.to_datetime('today') - df[date_col]).dt.days
+    
+    # Calcul du taux de défaillance (1/TTF)
+    df['Taux défaillance (1/jour)'] = 1 / df['TTF (jours)']
+    
+    return df
+
+def generate_statistics(df):
+    stats = {}
+    
+    # Statistiques de base
+    stats["Nombre total"] = len(df)
+    stats["Première date"] = df['date d\'installation'].min().strftime('%Y-%m-%d')
+    stats["Dernière date"] = df['date d\'installation'].max().strftime('%Y-%m-%d')
+    
+    # Statistiques par modèle
+    model_stats = df.groupby('modèle').agg({
+        'no de série': 'count',
+        'TTF (jours)': ['mean', 'median', 'std'],
+        'Age (jours)': 'mean'
+    })
+    stats["Par modèle"] = model_stats
     
     return stats
 
-def create_pdf_report(dataframes, analyses, figures):
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    
-    # Ajouter une page de titre
-    pdf.add_page()
-    pdf.set_font('Arial', 'B', 16)
-    pdf.cell(0, 10, "Rapport d'analyse des données machines", 0, 1, 'C')
-    pdf.ln(10)
-    pdf.set_font('Arial', '', 12)
-    pdf.cell(0, 10, f"Généré le {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 0, 1, 'C')
-    pdf.ln(20)
-    
-    # Ajouter le contenu pour chaque feuille
-    for sheet_name in dataframes.keys():
-        pdf.add_page()
-        pdf.set_font('Arial', 'B', 14)
-        pdf.cell(0, 10, f"Feuille: {sheet_name}", 0, 1)
-        pdf.ln(5)
-        
-        # Statistiques
-        pdf.set_font('Arial', 'B', 12)
-        pdf.cell(0, 10, "Statistiques:", 0, 1)
-        pdf.set_font('Arial', '', 10)
-        
-        stats = analyses[sheet_name]
-        for key, value in stats.items():
-            if pd.isna(value):
-                value = "N/A"
-            pdf.cell(0, 6, f"{key}: {value}", 0, 1)
-        
-        pdf.ln(10)
-        
-        # Graphiques
-        if sheet_name in figures:
-            pdf.set_font('Arial', 'B', 12)
-            pdf.cell(0, 10, "Graphiques:", 0, 1)
-            
-            for fig in figures[sheet_name]:
-                img_path = f"temp_{sheet_name}.png"
-                fig.savefig(img_path, bbox_inches='tight')
-                pdf.image(img_path, x=10, w=190)
-                pdf.ln(5)
-    
-    # Sauvegarder le PDF
-    pdf_output = "rapport_analyse_machines.pdf"
-    pdf.output(pdf_output)
-    return pdf_output
-
 # Interface Streamlit
-st.title("Analyse des données machines")
-
+st.title("📊 Analyse des données machines")
 uploaded_file = st.file_uploader("Télécharger le fichier Excel", type=["xlsx", "xls"])
 
 if uploaded_file is not None:
     data = load_data(uploaded_file)
-    analyses = {}
-    figures = {}
     
-    # Sélection de la feuille à afficher
-    sheet_names = list(data.keys())
-    selected_sheet = st.sidebar.selectbox("Sélectionner une feuille", sheet_names)
+    # Onglets pour chaque feuille
+    tabs = st.tabs(list(data.keys()))
     
-    if selected_sheet:
-        df = data[selected_sheet].copy()
-        
-        # Affichage des données
-        st.header(f"Feuille: {selected_sheet}")
-        st.dataframe(df.head())
-        
-        # Calculs spécifiques selon la feuille
-        if selected_sheet == "RMA machines":
-            df = calculate_time_to_failure(df, "date d'installation", "date rma")
-            df = calculate_age_from_installation(df, "date d'installation")
-            st.dataframe(df[['modèle', 'no de série', 'Time to Failure (jours)', 'Age depuis installation (jours)']].head())
-        
-        if selected_sheet == "incidents":
-            df = calculate_time_to_failure(df, "date d'installation", "date incident")
-            df = calculate_age_from_installation(df, "date d'installation")
-            st.dataframe(df[['modèle', 'no de série', 'Time to Failure (jours)', 'Age depuis installation (jours)']].head())
-        
-        # Analyse statistique
-        st.subheader("Statistiques descriptives")
-        stats = generate_statistics(df, selected_sheet)
-        analyses[selected_sheet] = stats
-        
-        # Affichage des statistiques (PARTIE CORRIGÉE)
-        col1, col2 = st.columns(2)
-        with col1:
-            st.write("**Métriques de base:**")
-            nb_enregistrements = stats["Nombre d'enregistrements"]
-            st.write(f"Nombre d'enregistrements: {nb_enregistrements}")
+    for tab, (sheet_name, df) in zip(tabs, data.items()):
+        with tab:
+            st.header(f"Feuille: {sheet_name}")
             
-            for col in df.columns:
-                if f"{col} - Valeurs uniques" in stats:
-                    st.write(f"{col}: {stats[f'{col} - Valeurs uniques']} valeurs uniques")
-        
-        with col2:
-            st.write("**Valeurs numériques:**")
-            numeric_cols = df.select_dtypes(include=[np.number]).columns
-            for col in numeric_cols:
-                st.write(f"{col}:")
-                st.write(f"- Moyenne: {stats.get(f'{col} - Moyenne', 'N/A')}")
-                st.write(f"- Médiane: {stats.get(f'{col} - Médiane', 'N/A')}")
-        
-        # Visualisations
-        st.subheader("Visualisations")
-        figs = []
-        
-        # Graphique 1: Répartition par modèle
-        fig, ax = plt.subplots()
-        df['modèle'].value_counts().plot(kind='bar', ax=ax)
-        ax.set_title(f"Répartition par modèle - {selected_sheet}")
-        st.pyplot(fig)
-        figs.append(fig)
-        
-        # Graphique 2: Répartition par filiale si disponible
-        if 'filiale' in df.columns:
-            fig2, ax2 = plt.subplots()
-            df['filiale'].value_counts().plot(kind='bar', ax=ax2)
-            ax2.set_title(f"Répartition par filiale - {selected_sheet}")
-            st.pyplot(fig2)
-            figs.append(fig2)
-        
-        # Graphique 3: Time to Failure si disponible
-        if 'Time to Failure (jours)' in df.columns:
-            fig3, ax3 = plt.subplots()
-            df['Time to Failure (jours)'].plot(kind='hist', bins=20, ax=ax3)
-            ax3.set_title(f"Distribution du Time to Failure - {selected_sheet}")
-            st.pyplot(fig3)
-            figs.append(fig3)
-        
-        figures[selected_sheet] = figs
-    
-    # Bouton pour générer le rapport PDF
-    if st.button("Générer le rapport PDF"):
-        with st.spinner("Création du rapport..."):
-            pdf_path = create_pdf_report(data, analyses, figures)
+            # Calculs spécifiques
+            if sheet_name in ["RMA machines", "incidents"]:
+                date_col = "date d'installation"
+                event_col = "date rma" if sheet_name == "RMA machines" else "date incident"
+                df = calculate_metrics(df, date_col, event_col)
             
-            with open(pdf_path, "rb") as f:
-                base64_pdf = base64.b64encode(f.read()).decode('utf-8')
+            # Affichage des données
+            with st.expander("Afficher les données brutes"):
+                st.dataframe(df)
             
-            pdf_display = f'<a href="data:application/pdf;base64,{base64_pdf}" download="rapport_analyse_machines.pdf">Télécharger le rapport PDF</a>'
-            st.markdown(pdf_display, unsafe_allow_html=True)
+            # Statistiques descriptives
+            st.subheader("📈 Statistiques descriptives")
+            
+            if sheet_name in ["RMA machines", "incidents"]:
+                # Affichage des métriques TTF
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    avg_ttf = df['TTF (jours)'].mean()
+                    st.metric("MTTF (jours)", f"{avg_ttf:.1f}")
+                
+                with col2:
+                    median_ttf = df['TTF (jours)'].median()
+                    st.metric("Mediane TTF (jours)", f"{median_ttf:.1f}")
+                
+                with col3:
+                    failure_rate = df['Taux défaillance (1/jour)'].mean()
+                    st.metric("Taux de défaillance moyen", f"{failure_rate:.6f}")
+            
+            # Répartition par modèle
+            st.subheader("📋 Répartition par modèle")
+            
+            model_dist = df['modèle'].value_counts().reset_index()
+            model_dist.columns = ['Modèle', 'Nombre']
+            
+            col1, col2 = st.columns([2, 3])
+            with col1:
+                st.dataframe(model_dist)
+            
+            with col2:
+                fig, ax = plt.subplots()
+                model_dist.plot(kind='bar', x='Modèle', y='Nombre', ax=ax, legend=False)
+                ax.set_title("Distribution par modèle")
+                ax.set_ylabel("Nombre d'occurrences")
+                st.pyplot(fig)
+            
+            # Répartition par filiale
+            if 'filiale' in df.columns:
+                st.subheader("🏢 Répartition par filiale")
+                filiale_dist = df['filiale'].value_counts().reset_index()
+                filiale_dist.columns = ['Filiale', 'Nombre']
+                st.dataframe(filiale_dist)
+            
+            # Téléchargement des résultats
+            st.download_button(
+                label="Télécharger les résultats",
+                data=df.to_csv(index=False).encode('utf-8'),
+                file_name=f"resultats_{sheet_name}.csv",
+                mime="text/csv"
+            )
+
 else:
     st.info("Veuillez télécharger un fichier Excel pour commencer l'analyse.")
