@@ -53,7 +53,7 @@ if "date_fabrication" in df.columns:
         "Année de fabrication",
         min_value=int(min_year),
         max_value=int(max_year),
-        value=(int(min_year), int(max_year))
+        value=(int(min_year), int(max_year)))
 else:
     st.sidebar.warning("Colonne 'date_fabrication' non trouvée.")
 
