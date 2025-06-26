@@ -175,6 +175,13 @@ if uploaded_file is not None:
                 file_name='donnees_filtrees.csv',
                 mime='text/csv'
             )
+            xlsx = df.to_excel(index=False).encode('utf-8')
+            st.download_button(
+                label="télécharger former excel",
+                data=xlsx,
+                file_name='donnees_excel.xlsx',
+                mime='text/xlsx'
+            )
         
         with tab2:
             # Graphique 1: Répartition des incidents par modèle
