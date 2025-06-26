@@ -175,19 +175,7 @@ if uploaded_file is not None:
                 file_name='donnees_filtrees.csv',
                 mime='text/csv'
             )
-            def convertir_en_excel (dataframe) :
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer :
-                    dataframe.to_excel(writer, index =False, sheet_name='Données')
-                return output.getvalue()
-            # Bouton d'export
-            fichier_excel = convertir_en_excel(df)
-            st.download_button(
-                label="télécharger former excel",
-                data=fichier_excel,
-                file_name='donnees_excel.xlsx',
-                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            )
+
         
         with tab2:
             # Graphique 1: Répartition des incidents par modèle
