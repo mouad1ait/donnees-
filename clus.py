@@ -7,12 +7,6 @@ import spacy
 import subprocess
 import sys
 
-# Vérifier si le modèle français est installé, sinon le télécharger
-try:
-    nlp = spacy.load("fr_core_news_sm")
-except OSError:
-    subprocess.run([sys.executable, "-m", "spacy", "download", "fr_core_news_sm"])
-    nlp = spacy.load("fr_core_news_sm")
 
 
 from sklearn.feature_extraction.text import TfidfVectorizer
